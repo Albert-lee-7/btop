@@ -11,7 +11,7 @@ else
 	DATE_CMD := date
 endif
 
-ifneq ($(QUIET),true)
+ifneq ($(QUIET),true) # unknown QUIET variable
 	override QUIET := false
 endif
 
@@ -38,7 +38,7 @@ override PLATFORM_LC := $(shell echo $(PLATFORM) | tr '[:upper:]' '[:lower:]')
 
 #? GPU Support
 ifeq ($(PLATFORM_LC)$(ARCH),linuxx86_64)
-	ifneq ($(STATIC),true)
+	ifneq ($(STATIC),true) # unknown STATIC variable
 		GPU_SUPPORT := true
 	endif
 endif
@@ -189,8 +189,10 @@ override LDFLAGS	+= $(LDCXXFLAGS) $(OPTFLAGS) $(WARNFLAGS)
 INC					:= $(foreach incdir,$(INCDIRS),-isystem $(incdir)) -I$(SRCDIR)
 SU_USER				:= root
 
+DEBUG = 1
 ifdef DEBUG
 	override OPTFLAGS := -O0 -g
+$(info $(OPTFLAGS))
 endif
 
 SOURCES	:= $(sort $(shell find $(SRCDIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
