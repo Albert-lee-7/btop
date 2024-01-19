@@ -1044,7 +1044,7 @@ int main(int argc, char **argv) {
 	Draw::calcSizes();
 
 	//? Print out box outlines
-	cout << Term::sync_start << Cpu::box << Mem::box << Net::box << Proc::box << Term::sync_end << flush;
+	cout << Term::sync_start << Cpu::box << Mem::box << Net::box << Proc::box << Term::sync_end << flush;//TODO: LZH Print out box outlines
 
 
 	//? ------------------------------------------------ MAIN LOOP ----------------------------------------------------

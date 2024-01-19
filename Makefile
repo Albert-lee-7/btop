@@ -189,7 +189,7 @@ override LDFLAGS	+= $(LDCXXFLAGS) $(OPTFLAGS) $(WARNFLAGS)
 INC					:= $(foreach incdir,$(INCDIRS),-isystem $(incdir)) -I$(SRCDIR)
 SU_USER				:= root
 
-DEBUG = 1
+DEBUG = true
 ifdef DEBUG
 	override OPTFLAGS := -O0 -g
 $(info $(OPTFLAGS))
