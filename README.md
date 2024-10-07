@@ -7,6 +7,8 @@
 ![Linux](https://img.shields.io/badge/-Linux-grey?logo=linux)
 ![macOS](https://img.shields.io/badge/-OSX-black?logo=apple)
 ![FreeBSD](https://img.shields.io/badge/-FreeBSD-red?logo=freebsd)
+![NetBSD](https://img.shields.io/badge/-NetBSD-black?logo=netbsd)
+![OpenBSD](https://img.shields.io/badge/-OpenBSD-black?logo=openbsd)
 ![Usage](https://img.shields.io/badge/Usage-System%20resource%20monitor-yellow)
 ![c++20](https://img.shields.io/badge/cpp-c%2B%2B20-green)
 ![latest_release](https://img.shields.io/github/v/tag/aristocratos/btop?label=release)
@@ -17,6 +19,8 @@
 [![Continuous Build Linux](https://github.com/aristocratos/btop/actions/workflows/continuous-build-linux.yml/badge.svg)](https://github.com/aristocratos/btop/actions/workflows/continuous-build-linux.yml)
 [![Continuous Build macOS](https://github.com/aristocratos/btop/actions/workflows/continuous-build-macos.yml/badge.svg)](https://github.com/aristocratos/btop/actions/workflows/continuous-build-macos.yml)
 [![Continuous Build FreeBSD](https://github.com/aristocratos/btop/actions/workflows/continuous-build-freebsd.yml/badge.svg)](https://github.com/aristocratos/btop/actions/workflows/continuous-build-freebsd.yml)
+[![Continuous Build NetBSD](https://github.com/aristocratos/btop/actions/workflows/continuous-build-netbsd.yml/badge.svg)](https://github.com/aristocratos/btop/actions/workflows/continuous-build-netbsd.yml)
+[![Continuous Build OpenBSD](https://github.com/aristocratos/btop/actions/workflows/continuous-build-openbsd.yml/badge.svg)](https://github.com/aristocratos/btop/actions/workflows/continuous-build-openbsd.yml)
 
 ## Index
 
@@ -33,12 +37,33 @@
 * [Compilation Linux](#compilation-linux)
 * [Compilation macOS](#compilation-macos-osx)
 * [Compilation FreeBSD](#compilation-freebsd)
+* [Compilation NetBSD](#compilation-netbsd)
+* [Compilation OpenBSD](#compilation-openbsd)
 * [GPU compatibility](#gpu-compatibility)
 * [Installing the snap](#installing-the-snap)
 * [Configurability](#configurability)
 * [License](#license)
 
 ## News
+
+##### 22 September 2024
+
+Btop release v1.4.0
+
+Intel GPU support added, note that only GPU utilization, power usage and clock speed available to monitor. Thanks to [@bjia56](https://github.com/bjia56) for contributions.
+
+NetBSD support added. Thanks to [@fraggerfox](https://github.com/fraggerfox) for contributions.
+
+See [CHANGELOG.md](CHANGELOG.md) and latest [release](https://github.com/aristocratos/btop/releases/latest) for detailed list of new features, bug fixes and new themes.
+
+##### 7 January 2024
+
+Btop release v1.3.0
+
+Big release with GPU support added for Linux and platform support for OpenBSD. Big thanks to [@romner-set](https://github.com/romner-set) (GPU support) and [@joske](https://github.com/joske) (OpenBSD support) for contributions.
+And a multitude of bugfixes and small changes, see [CHANGELOG.md](CHANGELOG.md) and latest [release](https://github.com/aristocratos/btop/releases/latest) for detailed list and attributions.
+
+See news entry below for more information regarding GPU support.
 
 ##### 25 November 2023
 
@@ -66,6 +91,9 @@ Big update with version bump to 1.3 coming soon.
 
 First release of btop4win available at https://github.com/aristocratos/btop4win
 
+<details>
+<summary>More...</summary>
+
 ##### 16 January 2022
 
 Release v1.2.0 with FreeBSD support. No release binaries for FreeBSD provided as of yet.
@@ -81,9 +109,6 @@ macOS binaries + installer are included for both x86 and ARM64 (Apple Silicon) i
 
 Big thank you to [@joske](https://github.com/joske) who wrote the vast majority of the implementation!
 
-<details>
-<summary>More...</summary>
-
 ##### 30 October 2021
 
 Work on the OSX [macOS] and FreeBSD branches, both initiated and mostly worked on by [@joske](https://github.com/joske), will likely be completed in the coming weeks.
@@ -94,7 +119,7 @@ If you want to help out, test for bugs/fix bugs or just try out the branches:
 **macOS / OSX**
 ```bash
 # Install and use Homebrew or MacPorts package managers for easy dependency installation
-brew install coreutils make gcc@11
+brew install coreutils make gcc@11 lowdown
 git clone https://github.com/aristocratos/btop.git
 cd btop
 git checkout OSX
@@ -103,7 +128,7 @@ gmake
 
 **FreeBSD**
 ```bash
-sudo pkg install gmake gcc11 coreutils git
+sudo pkg install gmake gcc11 coreutils git lowdown
 git clone https://github.com/aristocratos/btop.git
 cd btop
 git checkout freebsd
@@ -210,6 +235,30 @@ Also needs a UTF8 locale and a font that covers:
 * Unicode Block “Geometric Shapes” U+25A0 - U+25FF
 * Unicode Block "Box Drawing" and "Block Elements" U+2500 - U+259F
 
+### **Optional Dependencies (Needed for GPU monitoring) (Only Linux)**
+
+GPU monitoring also requires a btop binary built with GPU support (`GPU_SUPPORT=true` flag).
+
+See [GPU compatibility](#gpu-compatibility) section for more about compiling with GPU support.
+
+ * **NVIDIA**
+
+If you have an NVIDIA GPU you must use an official NVIDIA driver, both the closed-source and open-source ones have been verified to work.
+
+In addition to that you must also have the nvidia-ml dynamic library installed, which should be included with the driver package of your distribution.
+
+ * **AMD**
+
+If you have an AMD GPU `rocm_smi_lib` is required, which may or may not be packaged for your distribution.
+
+ * **INTEL**
+
+Requires a working C compiler if compiling from source - tested with GCC12 and Clang16.
+
+Also requires the user to have permission to read from SYSFS.
+
+Can be set with `make setcap` (preferred) or `make setuid` or by running btop with `sudo` or equivalent.
+
 ### **Notice (Text rendering issues)**
 
 * If you are having problems with the characters in the graphs not looking like they do in the screenshots, it's likely a problem with your systems configured fallback font not having support for braille characters.
@@ -260,7 +309,7 @@ Also needs a UTF8 locale and a font that covers:
 
 2. **Install (from created folder)**
 
-   * **Run install.sh or:**
+   * **Run:**
 
    ```bash
    # use "make install PREFIX=/target/dir" to set target, default: /usr/local
@@ -268,11 +317,19 @@ Also needs a UTF8 locale and a font that covers:
    sudo make install
    ```
 
-3. **(Optional) Set suid bit to make btop always run as root (or other user)**
+3. **(Optional/Required for Intel GPU) Set extended capabilities or suid bit to btop**
 
    Enables signal sending to any process without starting with `sudo` and can prevent /proc read permissions problems on some systems.
 
-   * **Run setuid.sh or:**
+   Is required for Intel GPU support.
+
+   * **Run:**
+
+   ```bash
+   # run after make install and use same PREFIX if any was used at install
+   sudo make setcap
+   ```
+   * **or**
 
    ```bash
    # run after make install and use same PREFIX if any was used at install
@@ -282,7 +339,7 @@ Also needs a UTF8 locale and a font that covers:
 
 * **Uninstall**
 
-  * **Run uninstall.sh or:**
+  * **Run:**
 
    ```bash
    sudo make uninstall
@@ -315,6 +372,10 @@ Also needs a UTF8 locale and a font that covers:
 	```sh
 	pkg install btop
 	```
+* **NetBSD**
+	```sh
+	pkg_add btop
+	```
 
 
 **Binary release on Homebrew (macOS (x86_64 & ARM64) / Linux (x86_64))**
@@ -326,17 +387,15 @@ Also needs a UTF8 locale and a font that covers:
 
 ## Compilation Linux
 
-   Needs GCC 10 / Clang 16 (or higher).
+   Requires at least GCC 10 or Clang 16.
 
    The makefile also needs GNU coreutils and `sed` (should already be installed on any modern distribution).
 
    ### GPU compatibility
 
-   Btop++ supports NVIDIA and AMD GPUs out of the box on Linux x86_64, provided you have the correct drivers and libraries.
+   Btop++ supports Nvidia and AMD GPUs and Intel IGPUs out of the box on Linux x86_64, provided you have the correct drivers and libraries.
 
-   Compatibility with Intel GPUs using generic DRM calls is planned, as is compatibility for FreeBSD and macOS.
-
-   Gpu support will not work when static linking glibc (or musl, etc.)!
+   Gpu support for Nvidia or AMD will not work when static linking glibc (or musl, etc.)!
 
    For x86_64 Linux the flag `GPU_SUPPORT` is automatically set to `true`, to manually disable gpu support set the flag to false, like:
 
@@ -350,27 +409,25 @@ Also needs a UTF8 locale and a font that covers:
 
  * **AMD**
 
-    AMDGPU data is queried using the [ROCm SMI](https://github.com/RadeonOpenCompute/rocm_smi_lib) library, which may or may not be packaged for your distribution. If your distribution doesn't provide a package, btop++ is statically linked to ROCm SMI with the `RSMI_STATIC=true` make flag.
+    AMDGPU data is queried using the [ROCm SMI](https://github.com/rocm/rocm_smi_lib) library, which may or may not be packaged for your distribution. If your distribution doesn't provide a package, btop++ is statically linked to ROCm SMI with the `RSMI_STATIC=true` make flag.
 
     This flag expects the ROCm SMI source code in `lib/rocm_smi_lib`, and compilation will fail if it's not there. The latest tested version is 5.6.x, which can be obtained with the following command:
 
    ```bash
-   git clone https://github.com/RadeonOpenCompute/rocm_smi_lib.git --depth 1 -b rocm-5.6.x lib/rocm_smi_lib
+   git clone https://github.com/rocm/rocm_smi_lib.git --depth 1 -b rocm-5.6.x lib/rocm_smi_lib
    ```
 
 <details>
-
 <summary>
 
 ### With Make
-
 </summary>
 
-1. **Install dependencies (example for Ubuntu 21.04 Hirsute)**      
+1. **Install dependencies (example for Ubuntu 21.04 Hirsute)**
 
    ```bash
-   sudo apt install coreutils sed git build-essential gcc-11 g++-11
-   ```   
+   sudo apt install coreutils sed git build-essential gcc-11 g++-11 lowdown
+   ```
 
 2. **Clone repository**
 
@@ -393,17 +450,19 @@ Also needs a UTF8 locale and a font that covers:
    | `STATIC=true`                   | For static compilation                                                  |
    | `QUIET=true`                    | For less verbose output                                                 |
    | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
+   | `DEBUG=true`                    | Sets OPTFLAGS to `-O0 -g` and enables more verbose debug logging        |
    | `ARCH=<architecture>`           | To manually set the target architecture                                 |
+   | `FORTIFY_SOURCE=false`          | Disable fortification with `_FORTIFY_SOURCE=3`                          |
    | `GPU_SUPPORT=<true\|false>`     | Enable/disable GPU support (Enabled by default on X86_64 Linux)         |
    | `RSMI_STATIC=true`              | To statically link the ROCm SMI library used for querying AMDGPU        |
    | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
-   | `CXX=<compiler>`                | Manualy set which compiler to use                                       |   
+   | `CXX=<compiler>`                | Manually set which compiler to use                                       |
 
    Example: `make ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.
 
    Notice! If using LDAP Authentication, usernames will show as UID number for LDAP users if compiling statically with glibc.
 
-4. **Install**   
+4. **Install**
 
    ```bash
    sudo make install
@@ -413,17 +472,25 @@ Also needs a UTF8 locale and a font that covers:
 
    Notice! Only use "sudo" when installing to a NON user owned directory.
 
-5. **(Optional) Set suid bit to make btop always run as root (or other user)**   
+5. **(Optional/Required for Intel GPU support) Set extended capabilities or suid bit to btop**
+
+   No need for `sudo` to enable signal sending to any process and to prevent /proc read permissions problems on some systems.
+
+   Also required for Intel GPU monitoring.
+
+   Run after make install and use same PREFIX if any was used at install.
+
+   ```bash
+   sudo make setcap
+   ```
+
+   or
+
+   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `root`
 
    ```bash
    sudo make setuid
    ```
-
-   No need for `sudo` to enable signal sending to any process and to prevent /proc read permissions problems on some systems.
-
-   Run after make install and use same PREFIX if any was used at install.
-
-   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `root`
 
 * **Uninstall**
 
@@ -450,23 +517,20 @@ Also needs a UTF8 locale and a font that covers:
    ```
 
 </details>
-
 <details>
-
 <summary>
 
 ### With CMake (Community maintained)
-
 </summary>
 
 1. **Install build dependencies**
 
-   Requires Clang / GCC, CMake, Ninja and Git
+   Requires Clang / GCC, CMake, Ninja, Lowdown and Git
 
    For example, with Debian Bookworm:
 
    ```bash
-   sudo apt install cmake git g++ ninja-build
+   sudo apt install cmake git g++ ninja-build lowdown
    ```
 
 2. **Clone the repository**
@@ -495,11 +559,12 @@ Also needs a UTF8 locale and a font that covers:
    | `-DBTOP_USE_MOLD=<ON\|OFF>`     | Use mold to link btop (OFF by default)                                  |
    | `-DBTOP_PEDANTIC=<ON\|OFF>`     | Compile with additional warnings (OFF by default)                       |
    | `-DBTOP_WERROR=<ON\|OFF>`       | Compile with warnings as errors (OFF by default)                        |
+   | `-DBTOP_FORTIFY=<ON\|OFF>`      | Detect buffer overflows with `_FORTIFY_SOURCE=3` (ON by default)        |
    | `-DBTOP_GPU=<ON\|OFF>`          | Enable GPU support (ON by default)                                      |
    | `-DBTOP_RSMI_STATIC=<ON\|OFF>`  | Build and link the ROCm SMI library statically (OFF by default)         |
    | `-DCMAKE_INSTALL_PREFIX=<path>` | The installation prefix ('/usr/local' by default)                       |
 
-   To force a compiler, run `CXX=<compiler> cmake -B build -G Ninja`
+   To force any other compiler, run `CXX=<compiler> cmake -B build -G Ninja`
 
 4. **Install**
 
@@ -526,18 +591,24 @@ Also needs a UTF8 locale and a font that covers:
 
 ## Compilation macOS OSX
 
-   Needs GCC 10 or higher, (GCC 11 or above strongly recommended for better CPU efficiency in the compiled binary).
+   Requires at least GCC 10 or Clang 16.
 
-   GCC 12 needed for macOS Ventura. If you get linker errors on Ventura you'll need to upgrade your command line tools (Version 14.0) is bugged.
+   With GCC, version 12 (or better) is needed for macOS Ventura. If you get linker errors on Ventura you'll need to upgrade your command line tools (Version 14.0) is bugged.
 
    The makefile also needs GNU coreutils and `sed`.
 
    Install and use Homebrew or MacPorts package managers for easy dependency installation
 
+<details>
+<summary>
+
+### With Make
+</summary>
+
 1. **Install dependencies (example for Homebrew)**
 
    ```bash
-   brew install coreutils make gcc@12
+   brew install coreutils make gcc@12 lowdown
    ```
 
 2. **Clone repository**
@@ -560,111 +631,20 @@ Also needs a UTF8 locale and a font that covers:
    | `STATIC=true`                   | For static compilation (only libgcc and libstdc++)                      |
    | `QUIET=true`                    | For less verbose output                                                 |
    | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
-   | `ARCH=<architecture>`           | To manually set the target architecture                                 |   
+   | `DEBUG=true`                    | Sets OPTFLAGS to `-O0 -g` and enables more verbose debug logging        |
+   | `ARCH=<architecture>`           | To manually set the target architecture                                 |
+   | `FORTIFY_SOURCE=false`          | Disable fortification with `_FORTIFY_SOURCE=3`                          |
    | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
-   | `CXX=<compiler>`                | Manualy set which compiler to use                                       |   
+   | `CXX=<compiler>`                | Manually set which compiler to use                                       |
 
-   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.   
-
-4. **Install**   
-
-   ```bash
-   sudo gmake install
-   ```
-
-   Append `PREFIX=/target/dir` to set target, default: `/usr/local`
-
-   Notice! Only use "sudo" when installing to a NON user owned directory.
-
-5. **(Recommended) Set suid bit to make btop always run as root (or other user)**   
-
-   ```bash
-   sudo gmake setuid
-   ```
-
-   No need for `sudo` to see information for non user owned processes and to enable signal sending to any process.
-
-   Run after make install and use same PREFIX if any was used at install.
-
-   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `wheel`
-
-* **Uninstall**
-
-   ```bash
-   sudo gmake uninstall
-   ```
-
-* **Remove any object files from source dir**
-
-   ```bash
-   gmake clean
-   ```
-
-* **Remove all object files, binaries and created directories in source dir**
-
-   ```bash
-   gmake distclean
-   ```
-
-* **Show help**
-
-   ```bash
-   gmake help
-   ```
-
-## Compilation FreeBSD
-
-   Needs GCC 10 or higher, (GCC 11 or above strongly recommended for better CPU efficiency in the compiled binary).
-
-   Note that GNU make (`gmake`) is required to compile on FreeBSD.
-
-<details>
-
-<summary>
-
-### With gmake
-
-</summary>
-
-1. **Install dependencies**
-
-   ```bash
-   sudo pkg install gmake gcc11 coreutils git
-   ```
-
-2. **Clone repository**
-
-   ```bash
-   git clone https://github.com/aristocratos/btop.git
-   cd btop
-   ```
-
-3. **Compile**
-
-   ```bash
-   gmake
-   ```
-
-   Options for make:
-
-   | Flag                            | Description                                                             |
-   |---------------------------------|-------------------------------------------------------------------------|
-   | `VERBOSE=true`                  | To display full compiler/linker commands                                |
-   | `STATIC=true`                   | For static compilation (only libgcc and libstdc++)                      |
-   | `QUIET=true`                    | For less verbose output                                                 |
-   | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
-   | `ARCH=<architecture>`           | To manually set the target architecture                                 |   
-   | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
-   | `CXX=<compiler>`                | Manualy set which compiler to use                                       |   
-
-   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system. 
+   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.
 
 4. **Install**
 
    ```bash
    sudo gmake install
    ```
-   
+
    Append `PREFIX=/target/dir` to set target, default: `/usr/local`
 
    Notice! Only use "sudo" when installing to a NON user owned directory.
@@ -674,7 +654,7 @@ Also needs a UTF8 locale and a font that covers:
    ```bash
    sudo gmake setuid
    ```
-   
+
    No need for `sudo` to see information for non user owned processes and to enable signal sending to any process.
 
    Run after make install and use same PREFIX if any was used at install.
@@ -706,36 +686,201 @@ Also needs a UTF8 locale and a font that covers:
    ```
 
 </details>
-
 <details>
-
 <summary>
 
 ### With CMake (Community maintained)
-
 </summary>
 
 1. **Install build dependencies**
 
-   Requires Clang / GCC, CMake, Ninja and Git
+   Requires Clang, CMake, Ninja, Lowdown and Git
 
-   _**Note:** LLVM's libc++ shipped with FreeBSD 13 is too old and cannot compile btop._
-
-	FreeBSD 14 and later:
    ```bash
-   pkg install cmake ninja
-   ```
-
-	FreeBSD 13:
-   ```bash
-   pkg install cmake gcc13 ninja
+   brew update --quiet
+   brew install cmake git llvm ninja lowdown
    ```
 
 2. **Clone the repository**
 
    ```bash
    git clone https://github.com/aristocratos/btop.git && cd btop
-   ``````
+   ```
+
+3. **Compile**
+
+   ```bash
+   # Configure
+   export LLVM_PREFIX="$(brew --prefix llvm)"
+   export CXX="$LLVM_PREFIX/bin/clang++"
+   export CPPFLAGS="-I$LLVM_PREFIX/include"
+   export LDFLAGS="-L$LLVM_PREFIX/lib -L$LLVM_PREFIX/lib/c++ -Wl,-rpath,$LLVM_PREFIX/lib/c++ -fuse-ld=$LLVM_PREFIX/bin/ld64.lld"
+   cmake -B build -G Ninja
+   # Build
+   cmake --build build
+   ```
+
+   _**Note:** btop uses lots of C++ 20 features, so it's necessary to be specific about the compiler and the standard library. If you get a compile with Apple-Clang or GCC, feel free to add the instructions here._
+
+   This will automatically build a release version of btop.
+
+   Some useful options to pass to the configure step:
+
+   | Configure flag                  | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `-DBTOP_LTO=<ON\|OFF>`          | Enables link time optimization (ON by default)                          |
+   | `-DBTOP_USE_MOLD=<ON\|OFF>`     | Use mold to link btop (OFF by default)                                  |
+   | `-DBTOP_PEDANTIC=<ON\|OFF>`     | Compile with additional warnings (OFF by default)                       |
+   | `-DBTOP_WERROR=<ON\|OFF>`       | Compile with warnings as errors (OFF by default)                        |
+   | `-DBTOP_FORTIFY=<ON\|OFF>`      | Detect buffer overflows with `_FORTIFY_SOURCE=3` (ON by default)        |
+   | `-DCMAKE_INSTALL_PREFIX=<path>` | The installation prefix ('/usr/local' by default)                       |
+
+   To force any specific compiler, run `CXX=<compiler> cmake -B build -G Ninja`
+
+4. **Install**
+
+   ```bash
+   cmake --install build
+   ```
+
+   May require root privileges
+
+5. **Uninstall**
+
+   CMake doesn't generate an uninstall target by default. To remove installed files, run
+   ```
+   cat build/install_manifest.txt | xargs rm -irv
+   ```
+
+6. **Cleanup build directory**
+
+   ```bash
+   cmake --build build -t clean
+   ```
+
+</details>
+
+## Compilation FreeBSD
+
+   Requires at least GCC 10 or Clang 16.
+
+   Note that GNU make (`gmake`) is required to compile on FreeBSD.
+
+<details>
+<summary>
+
+### With gmake
+</summary>
+
+1. **Install dependencies**
+
+   ```bash
+   sudo pkg install gmake gcc11 coreutils git lowdown
+   ```
+
+2. **Clone repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git
+   cd btop
+   ```
+
+3. **Compile**
+
+   ```bash
+   gmake
+   ```
+
+   Options for make:
+
+   | Flag                            | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `VERBOSE=true`                  | To display full compiler/linker commands                                |
+   | `STATIC=true`                   | For static compilation (only libgcc and libstdc++)                      |
+   | `QUIET=true`                    | For less verbose output                                                 |
+   | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
+   | `DEBUG=true`                    | Sets OPTFLAGS to `-O0 -g` and enables more verbose debug logging        |
+   | `ARCH=<architecture>`           | To manually set the target architecture                                 |
+   | `FORTIFY_SOURCE=false`          | Disable fortification with `_FORTIFY_SOURCE=3`                          |
+   | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
+   | `CXX=<compiler>`                | Manually set which compiler to use                                       |
+
+   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.
+
+4. **Install**
+
+   ```bash
+   sudo gmake install
+   ```
+
+   Append `PREFIX=/target/dir` to set target, default: `/usr/local`
+
+   Notice! Only use "sudo" when installing to a NON user owned directory.
+
+5. **(Recommended) Set suid bit to make btop always run as root (or other user)**
+
+   ```bash
+   sudo gmake setuid
+   ```
+
+   No need for `sudo` to see information for non user owned processes and to enable signal sending to any process.
+
+   Run after make install and use same PREFIX if any was used at install.
+
+   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `wheel`
+
+* **Uninstall**
+
+   ```bash
+   sudo gmake uninstall
+   ```
+
+* **Remove any object files from source dir**
+
+   ```bash
+   gmake clean
+   ```
+
+* **Remove all object files, binaries and created directories in source dir**
+
+   ```bash
+   gmake distclean
+   ```
+
+* **Show help**
+
+   ```bash
+   gmake help
+   ```
+
+</details>
+<details>
+<summary>
+
+### With CMake (Community maintained)
+</summary>
+
+1. **Install build dependencies**
+
+   Requires Clang / GCC, CMake, Ninja, Lowdown and Git
+
+   _**Note:** LLVM's libc++ shipped with FreeBSD 13 is too old and cannot compile btop._
+
+	FreeBSD 14 and later:
+   ```bash
+   pkg install cmake ninja lowdown
+   ```
+
+	FreeBSD 13:
+   ```bash
+   pkg install cmake gcc13 ninja lowdown
+   ```
+
+2. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git && cd btop
+   ```
 
 3. **Compile**
 
@@ -766,11 +911,336 @@ Also needs a UTF8 locale and a font that covers:
    | `-DBTOP_USE_MOLD=<ON\|OFF>`     | Use mold to link btop (OFF by default)                                  |
    | `-DBTOP_PEDANTIC=<ON\|OFF>`     | Compile with additional warnings (OFF by default)                       |
    | `-DBTOP_WERROR=<ON\|OFF>`       | Compile with warnings as errors (OFF by default)                        |
+   | `-DBTOP_FORTIFY=<ON\|OFF>`      | Detect buffer overflows with `_FORTIFY_SOURCE=3` (ON by default)        |
    | `-DCMAKE_INSTALL_PREFIX=<path>` | The installation prefix ('/usr/local' by default)                       |
 
    _**Note:** Static linking does not work with GCC._
 
-   To force a compiler, run `CXX=<compiler> cmake -B build -G Ninja`
+   To force any other compiler, run `CXX=<compiler> cmake -B build -G Ninja`
+
+4. **Install**
+
+   ```bash
+   cmake --install build
+   ```
+
+   May require root privileges
+
+5. **Uninstall**
+
+   CMake doesn't generate an uninstall target by default. To remove installed files, run
+   ```
+   cat build/install_manifest.txt | xargs rm -irv
+   ```
+
+6. **Cleanup build directory**
+
+   ```bash
+   cmake --build build -t clean
+   ```
+
+</details>
+
+## Compilation NetBSD
+
+   Requires at least GCC 10.
+
+   Note that GNU make (`gmake`) is required to compile on NetBSD.
+
+<details>
+<summary>
+
+### With gmake
+</summary>
+
+1. **Install dependencies**
+
+   ```bash
+   pkg_add gmake gcc10 coreutils git
+   ```
+
+2. **Clone repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git
+   cd btop
+   ```
+
+3. **Compile**
+
+   ```bash
+   gmake CXXFLAGS="-DNDEBUG"
+   ```
+
+   Options for make:
+
+   | Flag                            | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `VERBOSE=true`                  | To display full compiler/linker commands                                |
+   | `STATIC=true`                   | For static compilation (only libgcc and libstdc++)                      |
+   | `QUIET=true`                    | For less verbose output                                                 |
+   | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
+   | `DEBUG=true`                    | Sets OPTFLAGS to `-O0 -g` and enables more verbose debug logging        |
+   | `ARCH=<architecture>`           | To manually set the target architecture                                 |
+   | `FORTIFY_SOURCE=false`          | Disable fortification with `_FORTIFY_SOURCE=3`                          |
+   | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
+   | `CXX=<compiler>`                | Manually set which compiler to use                                      |
+
+   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.
+
+4. **Install**
+
+   ```bash
+   sudo gmake install
+   ```
+
+   Append `PREFIX=/target/dir` to set target, default: `/usr/local`
+
+   Notice! Only use "sudo" when installing to a NON user owned directory.
+
+5. **(Recommended) Set suid bit to make btop always run as root (or other user)**
+
+   ```bash
+   sudo gmake setuid
+   ```
+
+   No need for `sudo` to see information for non user owned processes and to enable signal sending to any process.
+
+   Run after make install and use same PREFIX if any was used at install.
+
+   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `wheel`
+
+* **Uninstall**
+
+   ```bash
+   sudo gmake uninstall
+   ```
+
+* **Remove any object files from source dir**
+
+   ```bash
+   gmake clean
+   ```
+
+* **Remove all object files, binaries and created directories in source dir**
+
+   ```bash
+   gmake distclean
+   ```
+
+* **Show help**
+
+   ```bash
+   gmake help
+   ```
+
+</details>
+<details>
+<summary>
+
+### With CMake (Community maintained)
+</summary>
+
+1. **Install build dependencies**
+
+   Requires GCC, CMake, Ninja and Git
+
+   ```bash
+   pkg_add cmake ninja-build gcc10 coreutils git
+   ```
+
+2. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git && cd btop
+   ```
+
+3. **Compile**
+
+   ```bash
+   # Configure
+   cmake -DCMAKE_CXX_COMPILER="/usr/pkg/gcc10/bin/g++" -B build -G Ninja
+   # Build
+   cmake --build build
+   ```
+
+   This will automatically build a release version of btop.
+
+   Some useful options to pass to the configure step:
+
+   | Configure flag                  | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `-DBTOP_LTO=<ON\|OFF>`          | Enables link time optimization (ON by default)                          |
+   | `-DBTOP_USE_MOLD=<ON\|OFF>`     | Use mold to link btop (OFF by default)                                  |
+   | `-DBTOP_PEDANTIC=<ON\|OFF>`     | Compile with additional warnings (OFF by default)                       |
+   | `-DBTOP_WERROR=<ON\|OFF>`       | Compile with warnings as errors (OFF by default)                        |
+   | `-DBTOP_FORTIFY=<ON\|OFF>`      | Detect buffer overflows with `_FORTIFY_SOURCE=3` (ON by default)        |
+   | `-DCMAKE_INSTALL_PREFIX=<path>` | The installation prefix ('/usr/local' by default)                       |
+
+   To force any other compiler, run `CXX=<compiler> cmake -B build -G Ninja`
+
+4. **Install**
+
+   ```bash
+   cmake --install build
+   ```
+
+   May require root privileges
+
+5. **Uninstall**
+
+   CMake doesn't generate an uninstall target by default. To remove installed files, run
+   ```
+   cat build/install_manifest.txt | xargs rm -irv
+   ```
+
+6. **Cleanup build directory**
+
+   ```bash
+   cmake --build build -t clean
+   ```
+
+</details>
+
+## Compilation OpenBSD
+
+   Requires at least GCC 10.
+
+   Note that GNU make (`gmake`) is required to compile on OpenBSD.
+
+<details>
+<summary>
+
+### With gmake
+</summary>
+
+1. **Install dependencies**
+
+   ```bash
+   pkg_add gmake gcc%11 g++%11 coreutils git lowdown
+   ```
+
+2. **Clone repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git
+   cd btop
+   ```
+
+3. **Compile**
+
+   ```bash
+   gmake CXX=eg++
+   ```
+
+   Options for make:
+
+   | Flag                            | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `VERBOSE=true`                  | To display full compiler/linker commands                                |
+   | `STATIC=true`                   | For static compilation (only libgcc and libstdc++)                      |
+   | `QUIET=true`                    | For less verbose output                                                 |
+   | `STRIP=true`                    | To force stripping of debug symbols (adds `-s` linker flag)             |
+   | `DEBUG=true`                    | Sets OPTFLAGS to `-O0 -g` and enables more verbose debug logging        |
+   | `ARCH=<architecture>`           | To manually set the target architecture                                 |
+   | `FORTIFY_SOURCE=false`          | Disable fortification with `_FORTIFY_SOURCE=3`                          |
+   | `ADDFLAGS=<flags>`              | For appending flags to both compiler and linker                         |
+   | `CXX=<compiler>`                | Manually set which compiler to use                                       |
+
+   Example: `gmake ADDFLAGS=-march=native` might give a performance boost if compiling only for your own system.
+
+4. **Install**
+
+   ```bash
+   sudo gmake install
+   ```
+
+   Append `PREFIX=/target/dir` to set target, default: `/usr/local`
+
+   Notice! Only use "sudo" when installing to a NON user owned directory.
+
+5. **(Recommended) Set suid bit to make btop always run as root (or other user)**
+
+   ```bash
+   sudo gmake setuid
+   ```
+
+   No need for `sudo` to see information for non user owned processes and to enable signal sending to any process.
+
+   Run after make install and use same PREFIX if any was used at install.
+
+   Set `SU_USER` and `SU_GROUP` to select user and group, default is `root` and `wheel`
+
+* **Uninstall**
+
+   ```bash
+   sudo gmake uninstall
+   ```
+
+* **Remove any object files from source dir**
+
+   ```bash
+   gmake clean
+   ```
+
+* **Remove all object files, binaries and created directories in source dir**
+
+   ```bash
+   gmake distclean
+   ```
+
+* **Show help**
+
+   ```bash
+   gmake help
+   ```
+
+</details>
+<details>
+<summary>
+
+### With CMake (Community maintained)
+</summary>
+
+1. **Install build dependencies**
+
+   Requires GCC, CMake, Ninja, Lowdown and Git
+
+   _**Note:** LLVM's libc++ shipped with OpenBSD 7.4 is too old and cannot compile btop._
+
+   ```bash
+   pkg_add cmake g++%11 git ninja lowdown
+   ```
+
+2. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/aristocratos/btop.git && cd btop
+   ```
+
+3. **Compile**
+
+   ```bash
+   # Configure
+   CXX=eg++ cmake -B build -G Ninja
+   # Build
+   cmake --build build
+   ```
+
+   This will automatically build a release version of btop.
+
+   Some useful options to pass to the configure step:
+
+   | Configure flag                  | Description                                                             |
+   |---------------------------------|-------------------------------------------------------------------------|
+   | `-DBTOP_LTO=<ON\|OFF>`          | Enables link time optimization (ON by default)                          |
+   | `-DBTOP_USE_MOLD=<ON\|OFF>`     | Use mold to link btop (OFF by default)                                  |
+   | `-DBTOP_PEDANTIC=<ON\|OFF>`     | Compile with additional warnings (OFF by default)                       |
+   | `-DBTOP_WERROR=<ON\|OFF>`       | Compile with warnings as errors (OFF by default)                        |
+   | `-DBTOP_FORTIFY=<ON\|OFF>`      | Detect buffer overflows with `_FORTIFY_SOURCE=3` (ON by default)        |
+   | `-DCMAKE_INSTALL_PREFIX=<path>` | The installation prefix ('/usr/local' by default)                       |
+
+   To force any other compiler, run `CXX=<compiler> cmake -B build -G Ninja`
 
 4. **Install**
 

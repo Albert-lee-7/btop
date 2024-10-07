@@ -40,6 +40,7 @@ override PLATFORM_LC := $(shell echo $(PLATFORM) | tr '[:upper:]' '[:lower:]')
 ifeq ($(PLATFORM_LC)$(ARCH),linuxx86_64)
 	ifneq ($(STATIC),true) # unknown STATIC variable
 		GPU_SUPPORT := true
+		INTEL_GPU_SUPPORT := true
 	endif
 endif
 ifneq ($(GPU_SUPPORT),true)
@@ -48,6 +49,11 @@ endif
 
 ifeq ($(GPU_SUPPORT),true)
 	override ADDFLAGS += -DGPU_SUPPORT
+endif
+
+FORTIFY_SOURCE ?= true
+ifeq ($(FORTIFY_SOURCE),true)
+	override ADDFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
 endif
 
 #? Compiler and Linker
@@ -59,38 +65,23 @@ override CXX_VERSION_MAJOR := $(shell echo $(CXX_VERSION) | cut -d '.' -f 1)
 
 CLANG_WORKS = false
 GCC_WORKS = false
+MIN_CLANG_VERSION = 16
+
+ifeq ($(DEBUG),true)
+	override ADDFLAGS += -DBTOP_DEBUG
+endif
 
 #? Supported is Clang 16.0.0 and later
 ifeq ($(CXX_IS_CLANG),true)
-	ifneq ($(shell test $(CXX_VERSION_MAJOR) -lt 16; echo $$?),0)
+	ifeq ($(shell $(CXX) --version | grep Apple >/dev/null 2>&1; echo $$?),0)
+		MIN_CLANG_VERSION := 15
+	endif
+	ifneq ($(shell test $(CXX_VERSION_MAJOR) -lt $(MIN_CLANG_VERSION); echo $$?),0)
 		CLANG_WORKS := true
 	endif
-endif
-ifeq ($(CLANG_WORKS),false)
-	#? Try to find a newer GCC version
-	ifeq ($(shell command -v g++-13 >/dev/null; echo $$?),0)
-		CXX := g++-13
-	else ifeq ($(shell command -v g++13 >/dev/null; echo $$?),0)
-		CXX := g++13
-	else ifeq ($(shell command -v g++-12 >/dev/null; echo $$?),0)
-		CXX := g++-12
-	else ifeq ($(shell command -v g++12 >/dev/null; echo $$?),0)
-		CXX := g++12
-	else ifeq ($(shell command -v g++-11 >/dev/null; echo $$?),0)
-		CXX := g++-11
-	else ifeq ($(shell command -v g++11 >/dev/null; echo $$?),0)
-		CXX := g++11
-	else ifeq ($(shell command -v g++ >/dev/null; echo $$?),0)
-		CXX := g++
-	else
-		GCC_NOT_FOUND := true
-	endif
-	ifndef GCC_NOT_FOUND
-		override CXX_VERSION := $(shell $(CXX) -dumpfullversion -dumpversion || echo 0)
-		override CXX_VERSION_MAJOR := $(shell echo $(CXX_VERSION) | cut -d '.' -f 1)
-		ifneq ($(shell test $(CXX_VERSION_MAJOR) -lt 10; echo $$?),0)
-			GCC_WORKS := true
-		endif
+else
+	ifneq ($(shell test $(CXX_VERSION_MAJOR) -lt 10; echo $$?),0)
+		GCC_WORKS := true
 	endif
 endif
 
@@ -107,17 +98,18 @@ ifneq ($(PLATFORM) $(ARCH),macos arm64)
 endif
 
 ifeq ($(STATIC),true)
-	ifeq ($(CXX_IS_CLANG) $(CLANG_WORKS),true true)
+	ifeq ($(CXX_IS_CLANG),true)
 		ifeq ($(shell $(CXX) -print-target-triple | grep gnu >/dev/null; echo $$?),0)
 $(error $(shell printf "\033[1;91mERROR: \033[97m$(CXX) can't statically link glibc\033[0m"))
 		endif
-	else
-		override ADDFLAGS += -static-libgcc -static-libstdc++
 	endif
-	ifeq ($(PLATFORM_LC),linux)
-		override ADDFLAGS += -DSTATIC_BUILD -static -Wl,--fatal-warnings
-	else ifeq ($(PLATFORM_LC),freebsd)
-		override ADDFLAGS += -DSTATIC_BUILD
+
+	ifeq ($(PLATFORM_LC),$(filter $(PLATFORM_LC),freebsd linux))
+		override ADDFLAGS += -DSTATIC_BUILD -static
+	else
+		ifeq ($(CXX_IS_CLANG),false)
+			override ADDFLAGS += -static-libgcc -static-libstdc++
+		endif
 	endif
 endif
 
@@ -140,15 +132,31 @@ else ifeq ($(PLATFORM_LC),freebsd)
 	PLATFORM_DIR := freebsd
 	THREADS	:= $(shell getconf NPROCESSORS_ONLN 2>/dev/null || echo 1)
 	SU_GROUP := wheel
-	override ADDFLAGS += -lm -lkvm -ldevstat -Wl,-rpath=/usr/local/lib/gcc$(CXX_VERSION_MAJOR)
-	ifneq ($(STATIC),true)
-		override ADDFLAGS += -lstdc++
+	override ADDFLAGS += -lm -lkvm -ldevstat
+	ifeq ($(STATIC),true)
+		override ADDFLAGS += -lelf -Wl,--eh-frame-hdr
+	endif
+
+ 	ifeq ($(CXX_IS_CLANG),false)
+		override ADDFLAGS += -lstdc++ -Wl,rpath=/usr/local/lib/gcc$(CXX_VERSION_MAJOR)
 	endif
 	export MAKE = gmake
 else ifeq ($(PLATFORM_LC),macos)
 	PLATFORM_DIR := osx
 	THREADS	:= $(shell sysctl -n hw.ncpu || echo 1)
 	override ADDFLAGS += -framework IOKit -framework CoreFoundation -Wno-format-truncation
+	SU_GROUP := wheel
+else ifeq ($(PLATFORM_LC),openbsd)
+	PLATFORM_DIR := openbsd
+	THREADS	:= $(shell sysctl -n hw.ncpu || echo 1)
+	override ADDFLAGS += -lkvm -static-libstdc++
+	export MAKE = gmake
+	SU_GROUP := wheel
+else ifeq ($(PLATFORM_LC),netbsd)
+	PLATFORM_DIR := netbsd
+	THREADS	:= $(shell sysctl -n hw.ncpu || echo 1)
+	override ADDFLAGS += -lkvm -lprop
+	export MAKE = gmake
 	SU_GROUP := wheel
 else
 $(error $(shell printf "\033[1;91mERROR: \033[97mUnsupported platform ($(PLATFORM))\033[0m"))
@@ -167,6 +175,12 @@ else
 	LTO := $(THREADS)
 endif
 
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2> /dev/null || true)
+CONFIGURE_COMMAND := $(MAKE) STATIC=$(STATIC) FORTIFY_SOURCE=$(FORTIFY_SOURCE)
+ifeq ($(PLATFORM_LC),linux)
+	CONFIGURE_COMMAND +=  GPU_SUPPORT=$(GPU_SUPPORT) RSMI_STATIC=$(RSMI_STATIC)
+endif
+
 #? The Directories, Source, Includes, Objects and Binary
 SRCDIR		:= src
 INCDIRS		:= include $(wildcard lib/**/include)
@@ -183,10 +197,10 @@ override GOODFLAGS := $(foreach flag,$(TESTFLAGS),$(strip $(shell echo "int main
 override REQFLAGS   := -std=c++20
 WARNFLAGS			:= -Wall -Wextra -pedantic
 OPTFLAGS			:= -O2 -ftree-vectorize -flto=$(LTO)
-LDCXXFLAGS			:= -pthread -D_FORTIFY_SOURCE=2 -D_GLIBCXX_ASSERTIONS -D_FILE_OFFSET_BITS=64 $(GOODFLAGS) $(ADDFLAGS)
+LDCXXFLAGS			:= -pthread -DFMT_HEADER_ONLY -D_GLIBCXX_ASSERTIONS -D_FILE_OFFSET_BITS=64 $(GOODFLAGS) $(ADDFLAGS)
 override CXXFLAGS	+= $(REQFLAGS) $(LDCXXFLAGS) $(OPTFLAGS) $(WARNFLAGS)
 override LDFLAGS	+= $(LDCXXFLAGS) $(OPTFLAGS) $(WARNFLAGS)
-INC					:= $(foreach incdir,$(INCDIRS),-isystem $(incdir)) -I$(SRCDIR)
+INC					:= $(foreach incdir,$(INCDIRS),-isystem $(incdir)) -I$(SRCDIR) -I$(BUILDDIR)
 SU_USER				:= root
 
 DEBUG = true
@@ -197,12 +211,21 @@ endif
 
 SOURCES	:= $(sort $(shell find $(SRCDIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
 
-SOURCES += $(sort $(shell find $(SRCDIR)/$(PLATFORM_DIR) -type f -name *.$(SRCEXT)))
-
-#? Setup percentage progress
-SOURCE_COUNT := $(words $(SOURCES))
+SOURCES += $(sort $(shell find $(SRCDIR)/$(PLATFORM_DIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
 
 OBJECTS	:= $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.$(OBJEXT)))
+
+ifeq ($(GPU_SUPPORT)$(INTEL_GPU_SUPPORT),truetrue)
+	IGT_OBJECTS := $(BUILDDIR)/igt_perf.c.o $(BUILDDIR)/intel_device_info.c.o $(BUILDDIR)/intel_name_lookup_shim.c.o $(BUILDDIR)/intel_gpu_top.c.o
+	OBJECTS += $(IGT_OBJECTS)
+	SHOW_CC_INFO = false
+	CC_VERSION := $(shell $(CC) -dumpfullversion -dumpversion || echo 0)
+else
+	SHOW_CC_INFO = true
+endif
+
+#? Setup percentage progress
+SOURCE_COUNT := $(words $(OBJECTS))
 
 ifeq ($(shell find $(BUILDDIR) -type f -newermt "$(DATESTAMP)" -name *.o >/dev/null 2>&1; echo $$?),0)
 	ifneq ($(wildcard $(BUILDDIR)/.*),)
@@ -228,7 +251,7 @@ endif
 
 #? Default Make
 .ONESHELL:
-all: | info rocm_smi info-quiet directories btop
+all: | info rocm_smi info-quiet directories btop.1 config.h btop
 
 ifneq ($(QUIET),true)
 info:
@@ -237,7 +260,8 @@ info:
 	@printf "\033[1;96mARCH         \033[1;93m?| \033[0m$(ARCH)\n"
 	@printf "\033[1;95mGPU_SUPPORT  \033[1;94m:| \033[0m$(GPU_SUPPORT)\n"
 	@printf "\033[1;93mCXX          \033[1;93m?| \033[0m$(CXX) \033[1;93m(\033[97m$(CXX_VERSION)\033[93m)\n"
-	@printf "\033[1;94mTHREADS      \033[1;94m:| \033[0m$(THREADS)\n"
+	@$(SHOW_CC_INFO) || printf "\033[1;93mCC           \033[1;93m?| \033[0m$(CC) \033[1;93m(\033[97m$(CC_VERSION)\033[93m)\n"
+	@printf "\033[1;94mTHREADS      \033[1;94m:| \033[0m$(THREADS)\n" gcc -dumpfullversion -dumpversion
 	@printf "\033[1;92mREQFLAGS     \033[1;91m!| \033[0m$(REQFLAGS)\n"
 	@printf "\033[1;91mWARNFLAGS    \033[1;94m:| \033[0m$(WARNFLAGS)\n"
 	@printf "\033[1;94mOPTFLAGS     \033[1;94m:| \033[0m$(OPTFLAGS)\n"
@@ -248,7 +272,6 @@ else
 info:
 	 @true
 endif
-
 
 info-quiet: | info rocm_smi
 	@printf "\n\033[1;92mBuilding btop++ \033[91m(\033[97mv$(BTOP_VERSION)\033[91m) \033[93m$(PLATFORM) \033[96m$(ARCH)\033[0m\n"
@@ -262,6 +285,7 @@ help:
 	@printf "  clean        Remove built objects\n"
 	@printf "  distclean    Remove built objects and binaries\n"
 	@printf "  install      Install btop++ to \$$PREFIX ($(PREFIX))\n"
+	@printf "  setcap       Set extended capabilities on binary (preferable to setuid)\n"
 	@printf "  setuid       Set installed binary owner/group to \$$SU_USER/\$$SU_GROUP ($(SU_USER)/$(SU_GROUP)) and set SUID bit\n"
 	@printf "  uninstall    Uninstall btop++ from \$$PREFIX\n"
 	@printf "  info         Display information about Environment,compiler and linker flags\n"
@@ -273,17 +297,33 @@ directories:
 	@$(VERBOSE) || printf "mkdir -p $(BUILDDIR)/$(PLATFORM_DIR)\n"
 	@mkdir -p $(BUILDDIR)/$(PLATFORM_DIR)
 
+config.h: $(BUILDDIR)/config.h
+
+$(BUILDDIR)/config.h: $(SRCDIR)/config.h.in | directories
+	@$(QUIET) || printf "\033[1mConfiguring $(BUILDDIR)/config.h\033[0m\n"
+	@$(VERBOSE) || printf 'sed -e "s|@GIT_COMMIT@|$(GIT_COMMIT)|" -e "s|@CONFIGURE_COMMAND@|$(CONFIGURE_COMMAND)|" -e "s|@COMPILER@|$(CXX)|" -e "s|@COMPILER_VERSION@|$(CXX_VERSION)|" $< | tee $@ > /dev/null\n'
+	@sed -e "s|@GIT_COMMIT@|$(GIT_COMMIT)|" -e "s|@CONFIGURE_COMMAND@|$(CONFIGURE_COMMAND)|" -e "s|@COMPILER@|$(CXX)|" -e "s|@COMPILER_VERSION@|$(CXX_VERSION)|" $< | tee $@ > /dev/null
+
+#? Man page
+btop.1: manpage.md | directories
+ifeq ($(shell command -v lowdown >/dev/null; echo $$?),0)
+	@printf "\n\033[1;92mGenerating man page $@\033[37m...\033[0m\n"
+	lowdown -s -Tman -o $@ $<
+else
+	@printf "\n\033[1;93mCommand 'lowdown' not found: skipping generating man page $@\033[0m\n"
+endif
+
 #? Clean only Objects
 clean:
 	@printf "\033[1;91mRemoving: \033[1;97mbuilt objects...\033[0m\n"
 	@rm -rf $(BUILDDIR)
-	@cmake --build lib/rocm_smi_lib/build --target clean &> /dev/null || true
+	@test -e lib/rocm_smi_lib/build && cmake --build lib/rocm_smi_lib/build --target clean &> /dev/null || true
 
 #? Clean Objects and Binaries
 distclean: clean
 	@printf "\033[1;91mRemoving: \033[1;97mbuilt binaries...\033[0m\n"
 	@rm -rf $(TARGETDIR)
-	@rm -rf lib/rocm_smi_lib/build
+	@test -e lib/rocm_smi_lib/build && rm -rf lib/rocm_smi_lib/build || true
 
 install:
 	@printf "\033[1;92mInstalling binary to: \033[1;97m$(DESTDIR)$(PREFIX)/bin/btop\n"
@@ -304,7 +344,11 @@ install:
 	@printf "\033[1;92mInstalling SVG icon to: \033[1;97m$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/btop.svg\n"
 	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
 	@cp -p Img/icon.svg $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/btop.svg
-
+ifneq ($(wildcard btop.1),)
+	@printf "\033[1;92mInstalling man page to: \033[1;97m$(DESTDIR)$(PREFIX)/share/man/man1/btop.1\n"
+	@mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
+	@cp -p btop.1 $(DESTDIR)$(PREFIX)/share/man/man1/btop.1
+endif
 
 #? Set SUID bit for btop as $SU_USER in $SU_GROUP
 setuid:
@@ -314,17 +358,26 @@ setuid:
 	@printf "\033[1;92mSetting SUID bit\033[0m\n"
 	@chmod u+s $(DESTDIR)$(PREFIX)/bin/btop
 
+#? Run setcap on btop for extended capabilities
+setcap:
+	@printf "\033[1;97mFile: $(DESTDIR)$(PREFIX)/bin/btop\n"
+	@printf "\033[1;92mSetting capabilities...\033[0m\n"
+	@setcap cap_perfmon=+ep $(DESTDIR)$(PREFIX)/bin/btop
+
+# With 'rm -v' user will see what files (if any) got removed
 uninstall:
 	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/bin/btop\033[0m\n"
-	@rm -rf $(DESTDIR)$(PREFIX)/bin/btop
+	@rm -rfv $(DESTDIR)$(PREFIX)/bin/btop
 	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/share/btop\033[0m\n"
-	@rm -rf $(DESTDIR)$(PREFIX)/share/btop
+	@rm -rfv $(DESTDIR)$(PREFIX)/share/btop
 	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/share/applications/btop.desktop\033[0m\n"
-	@rm -rf $(DESTDIR)$(PREFIX)/share/applications/btop.desktop
+	@rm -rfv $(DESTDIR)$(PREFIX)/share/applications/btop.desktop
 	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/btop.png\033[0m\n"
-	@rm -rf $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/btop.png
+	@rm -rfv $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps/btop.png
 	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/btop.svg\033[0m\n"
-	@rm -rf $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/btop.svg
+	@rm -rfv $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/btop.svg
+	@printf "\033[1;91mRemoving: \033[1;97m$(DESTDIR)$(PREFIX)/share/man/man1/btop.1\033[0m\n"
+	@rm -rfv $(DESTDIR)$(PREFIX)/share/man/man1/btop.1
 
 #? Pull in dependency info for *existing* .o files
 -include $(OBJECTS:.$(OBJEXT)=.$(DEPEXT))
@@ -368,7 +421,7 @@ btop: $(OBJECTS) | rocm_smi directories
 
 #? Compile
 .ONESHELL:
-$(BUILDDIR)/%.$(OBJEXT): $(SRCDIR)/%.$(SRCEXT) | rocm_smi directories
+$(BUILDDIR)/%.$(OBJEXT): $(SRCDIR)/%.$(SRCEXT) | rocm_smi directories config.h
 	@sleep 0.3 2>/dev/null || true
 	@TSTAMP=$$(date +%s 2>/dev/null || echo "0")
 	@$(QUIET) || printf "\033[1;97mCompiling $<\033[0m\n"
@@ -376,5 +429,16 @@ $(BUILDDIR)/%.$(OBJEXT): $(SRCDIR)/%.$(SRCEXT) | rocm_smi directories
 	@$(CXX) $(CXXFLAGS) $(INC) -MMD -c -o $@ $< || exit 1
 	@printf "\033[1;92m$$($(PROGRESS))$(P)\033[10D\033[5C-> \033[1;37m$@ \033[100D\033[38C\033[1;93m(\033[1;97m$$(du -ah $@ | cut -f1)iB\033[1;93m) \033[92m(\033[97m$$($(DATE_CMD) -d @$$(expr $$($(DATE_CMD) +%s 2>/dev/null || echo "0") - $${TSTAMP} 2>/dev/null) -u +%Mm:%Ss 2>/dev/null | sed 's/^00m://' || echo '')\033[92m)\033[0m\n"
 
+#? Compile intel_gpu_top C sources for Intel GPU support
+.ONESHELL:
+$(BUILDDIR)/%.c.o: $(SRCDIR)/$(PLATFORM_DIR)/intel_gpu_top/%.c | directories
+	@sleep 0.3 2>/dev/null || true
+	@TSTAMP=$$(date +%s 2>/dev/null || echo "0")
+	@$(QUIET) || printf "\033[1;97mCompiling $<\033[0m\n"
+	@$(VERBOSE) || printf "$(CC) $(INC) -c -o $@ $<\n"
+	@$(CC) $(INC) -w -c -o $@ $< || exit 1
+	@printf "\033[1;92m$$($(PROGRESS))$(P)\033[10D\033[5C-> \033[1;37m$@ \033[100D\033[38C\033[1;93m(\033[1;97m$$(du -ah $@ | cut -f1)iB\033[1;93m) \033[92m(\033[97m$$($(DATE_CMD) -d @$$(expr $$($(DATE_CMD) +%s 2>/dev/null || echo "0") - $${TSTAMP} 2>/dev/null) -u +%Mm:%Ss 2>/dev/null | sed 's/^00m://' || echo '')\033[92m)\033[0m\n"
+
+
 #? Non-File Targets
-.PHONY: all msg help pre
+.PHONY: all config.h msg help pre

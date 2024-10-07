@@ -16,12 +16,13 @@ indent = tab
 tab-size = 4
 */
 
-#include <iostream>
+#include <limits>
 #include <ranges>
 #include <vector>
 #include <thread>
 #include <mutex>
 #include <signal.h>
+#include <sys/select.h>
 #include <utility>
 
 #include "btop_input.hpp"
@@ -31,17 +32,6 @@ tab-size = 4
 #include "btop_menu.hpp"
 #include "btop_draw.hpp"
 
-
-#include "btop_input.hpp"
-#include "btop_tools.hpp"
-#include "btop_config.hpp"
-#include "btop_shared.hpp"
-#include "btop_menu.hpp"
-#include "btop_draw.hpp"
-
-
-using std::cin;
-
 using namespace Tools;
 using namespace std::literals; // for operator""s
 namespace rng = std::ranges;
@@ -49,8 +39,9 @@ namespace rng = std::ranges;
 namespace Input {
 
 	//* Map for translating key codes to readable values
-	const unordered_flat_map<string, string> Key_escapes = {
+	const std::unordered_map<string, string> Key_escapes = {
 		{"\033",	"escape"},
+		{"\x12",	"ctrl_r"},
 		{"\n",		"enter"},
 		{" ",		"space"},
 		{"\x7f",	"backspace"},
@@ -89,83 +80,45 @@ namespace Input {
 		{"[24~",	"f12"}
 	};
 
-	std::atomic<bool> interrupt (false);
+	sigset_t signal_mask;
 	std::atomic<bool> polling (false);
 	array<int, 2> mouse_pos;
-	unordered_flat_map<string, Mouse_loc> mouse_mappings;
+	std::unordered_map<string, Mouse_loc> mouse_mappings;
 
 	deque<string> history(50, "");
 	string old_filter;
+	string input;
 
-	struct InputThr {
-		InputThr() : thr(run, this) {
-		}
-
-		static void run(InputThr* that) {
-			that->runImpl();
-		}
-
-		void runImpl() {
-			char ch = 0;
-
-			// TODO(pg83): read whole buffer
-			while (cin.get(ch)) {
-				std::lock_guard<std::mutex> g(lock);
-				current.push_back(ch);
-				if (current.size() > 100) {
-					current.clear();
-				}
-			}
-		}
-
-		size_t avail() {
-			std::lock_guard<std::mutex> g(lock);
-
-			return current.size();
-		}
-
-		std::string get() {
-			std::string res;
-
-			{
-				std::lock_guard<std::mutex> g(lock);
-
-				res.swap(current);
-			}
-
-			return res;
-		}
-
-		static InputThr& instance() {
-			// intentional memory leak, to simplify shutdown process
-			static InputThr* input = new InputThr();
-
-			return *input;
-		}
-
-		std::string current;
-		// TODO(pg83): use std::conditional_variable instead of sleep
-		std::mutex lock;
-		std::thread thr;
-	};
-
-	bool poll(int timeout) {
+	bool poll(const uint64_t timeout) {
 		atomic_lock lck(polling);
-		if (timeout < 1) return InputThr::instance().avail() > 0;
-		while (timeout > 0) {
-			if (interrupt) {
-				interrupt = false;
-				return false;
-			}
-			if (InputThr::instance().avail() > 0) return true;
-			sleep_ms(timeout < 10 ? timeout : 10);
-			timeout -= 10;
+		fd_set fds;
+		FD_ZERO(&fds);
+		FD_SET(STDIN_FILENO, &fds);
+		struct timespec wait;
+		struct timespec *waitptr = nullptr;
+
+		if(timeout != std::numeric_limits<uint64_t>::max()) {
+			wait.tv_sec = timeout / 1000;
+			wait.tv_nsec = (timeout % 1000) * 1000000;
+			waitptr = &wait;
 		}
+
+		if(pselect(STDIN_FILENO + 1, &fds, nullptr, nullptr, waitptr, &signal_mask) > 0) {
+			input.clear();
+			char buf[1024];
+			ssize_t count = 0;
+			while((count = read(STDIN_FILENO, buf, sizeof(buf))) > 0) {
+				input.append(std::string_view(buf, count));
+			}
+
+			return true;
+		}
+
 		return false;
 	}
 
 	string get() {
-		string key = InputThr::instance().get();
+		string key = input;
 		if (not key.empty()) {
 			//? Remove escape code prefix if present
 			if (key.substr(0, 2) == Fx::e) {
@@ -238,10 +191,12 @@ namespace Input {
 	}
 
 	string wait() {
-		while (InputThr::instance().avail() < 1) {
-			sleep_ms(10);
-		}
+		while(not poll(std::numeric_limits<uint64_t>::max())) {}
 		return get();
+	}
+
+	void interrupt() {
+		kill(getpid(), SIGUSR1);
 	}
 
 	void clear() {
@@ -277,7 +232,7 @@ namespace Input {
 					auto intKey = stoi(key);
 				#ifdef GPU_SUPPORT
 					static const array<string, 10> boxes = {"gpu5", "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4"};
-					if ((intKey == 0 and Gpu::gpu_names.size() < 5) or (intKey >= 5 and std::cmp_less(Gpu::gpu_names.size(), intKey - 4)))
+					if ((intKey == 0 and Gpu::count < 5) or (intKey >= 5 and intKey - 4 > Gpu::count))
 						return;
 				#else
 				static const array<string, 10> boxes = {"", "cpu", "mem", "net", "proc"};
@@ -285,14 +240,18 @@ namespace Input {
 						return;
 				#endif
 					atomic_wait(Runner::active);
-					Config::current_preset = -1;
 
-					Config::toggle_box(boxes.at(intKey));
+					if (not Config::toggle_box(boxes.at(intKey))) {
+						Menu::show(Menu::Menus::SizeError);
+						return;
+					}
+					Config::current_preset = -1;
 					Draw::calcSizes();
 					Runner::run("all", false, true);
 					return;
 				}
 				else if (is_in(key, "p", "P") and Config::preset_list.size() > 1) {
+					const auto old_preset = Config::current_preset;
 					if (key == "p") {
 						if (++Config::current_preset >= (int)Config::preset_list.size()) Config::current_preset = 0;
 					}
@@ -300,12 +259,18 @@ namespace Input {
 						if (--Config::current_preset < 0) Config::current_preset = Config::preset_list.size() - 1;
 					}
 					atomic_wait(Runner::active);
-					Config::apply_preset(Config::preset_list.at(Config::current_preset));
+					if (not Config::apply_preset(Config::preset_list.at(Config::current_preset))) {
+						Menu::show(Menu::Menus::SizeError);
+						Config::current_preset = old_preset;
+						return;
+					}
 					Draw::calcSizes();
 					Runner::run("all", false, true);
 					return;
-				}
-				else
+				} else if (is_in(key, "ctrl_r")) {
+					kill(getpid(), SIGUSR2);
+					return;
+				} else
 					keep_going = true;
 
 				if (not keep_going) return;

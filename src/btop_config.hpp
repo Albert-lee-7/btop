@@ -18,15 +18,15 @@ tab-size = 4
 
 #pragma once
 
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
-#include <filesystem>
 
-#include <robin_hood.h>
+#include <unordered_map>
 
 using std::string;
 using std::vector;
-using robin_hood::unordered_flat_map;
 
 //* Functions and variables for reading and writing the btop config file
 namespace Config {
@@ -34,12 +34,12 @@ namespace Config {
 	extern std::filesystem::path conf_dir;
 	extern std::filesystem::path conf_file;
 
-	extern unordered_flat_map<std::string_view, string> strings;
-	extern unordered_flat_map<std::string_view, string> stringsTmp;
-	extern unordered_flat_map<std::string_view, bool> bools;
-	extern unordered_flat_map<std::string_view, bool> boolsTmp;
-	extern unordered_flat_map<std::string_view, int> ints;
-	extern unordered_flat_map<std::string_view, int> intsTmp;
+	extern std::unordered_map<std::string_view, string> strings;
+	extern std::unordered_map<std::string_view, string> stringsTmp;
+	extern std::unordered_map<std::string_view, bool> bools;
+	extern std::unordered_map<std::string_view, bool> boolsTmp;
+	extern std::unordered_map<std::string_view, int> ints;
+	extern std::unordered_map<std::string_view, int> intsTmp;
 
 	const vector<string> valid_graph_symbols = { "braille", "block", "tty" };
 	const vector<string> valid_graph_symbols_def = { "default", "braille", "block", "tty" };
@@ -58,17 +58,23 @@ namespace Config {
 	extern vector<string> available_batteries;
 	extern int current_preset;
 
-	//* Check if string only contains space separated valid names for boxes
-	bool check_boxes(const string& boxes);
+	constexpr int ONE_DAY_MILLIS = 1000 * 60 * 60 * 24;
+
+	[[nodiscard]] std::optional<std::filesystem::path> get_config_dir() noexcept;
+
+	//* Check if string only contains space separated valid names for boxes and set current_boxes
+	bool set_boxes(const string& boxes);
+
+	bool validBoxSizes(const string& boxes);
 
 	//* Toggle box and update config string shown_boxes
-	void toggle_box(const string& box);
+	bool toggle_box(const string& box);
 
 	//* Parse and setup config value presets
 	bool presetsValid(const string& presets);
 
 	//* Apply selected preset
-	void apply_preset(const string& preset);
+	bool apply_preset(const string& preset);
 
 	bool _locked(const std::string_view name);
 
@@ -95,7 +101,7 @@ namespace Config {
 	}
 
 	//* Set config key <name> to int <value>
-	inline void set(const std::string_view name, const int& value) {
+	inline void set(const std::string_view name, const int value) {
 		if (_locked(name)) intsTmp.insert_or_assign(name, value);
 		else ints.at(name) = value;
 	}

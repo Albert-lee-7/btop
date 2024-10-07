@@ -16,6 +16,7 @@ indent = tab
 tab-size = 4
 */
 
+#include <Availability.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
 #include <arpa/inet.h>
@@ -44,6 +45,7 @@ tab-size = 4
 #include <netinet/in.h> // for inet_ntop
 #include <unistd.h>
 #include <stdexcept>
+#include <utility>
 
 #include <cmath>
 #include <fstream>
@@ -56,7 +58,9 @@ tab-size = 4
 #include "../btop_shared.hpp"
 #include "../btop_tools.hpp"
 
+#if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 #include "sensors.hpp"
+#endif
 #include "smc.hpp"
 
 using std::clamp, std::string_literals::operator""s, std::cmp_equal, std::cmp_less, std::cmp_greater;
@@ -95,7 +99,7 @@ namespace Cpu {
 
 	string cpu_sensor;
 	vector<string> core_sensors;
-	unordered_flat_map<int, int> core_mapping;
+	std::unordered_map<int, int> core_mapping;
 }  // namespace Cpu
 
 namespace Mem {
@@ -187,11 +191,11 @@ namespace Cpu {
 	string cpuHz;
 	bool has_battery = true;
 	bool macM1 = false;
-	tuple<int, long, string> current_bat;
+	tuple<int, float, long, string> current_bat;
 
 	const array<string, 10> time_names = {"user", "nice", "system", "idle"};
 
-	unordered_flat_map<string, long long> cpu_old = {
+	std::unordered_map<string, long long> cpu_old = {
 		{"totals", 0},
 		{"idles", 0},
 		{"user", 0},
@@ -236,7 +240,7 @@ namespace Cpu {
 				name += n + ' ';
 			}
 			name.pop_back();
-				for (const auto& replace : {"Processor", "CPU", "(R)", "(TM)", "Intel", "AMD", "Core"}) {
+				for (const auto& replace : {"Processor", "CPU", "(R)", "(TM)", "Intel", "AMD", "Apple", "Core"}) {
 					name = s_replace(name, replace, "");
 					name = s_replace(name, "  ", " ");
 				}
@@ -250,6 +254,7 @@ namespace Cpu {
 		Logger::debug("get_sensors(): show_coretemp=" + std::to_string(Config::getB("show_coretemp")) + " check_temp=" + std::to_string(Config::getB("check_temp")));
 		got_sensors = false;
 		if (Config::getB("show_coretemp") and Config::getB("check_temp")) {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 			ThermalSensors sensors;
 			if (sensors.getSensors() > 0) {
 				Logger::debug("M1 sensors found");
@@ -257,6 +262,7 @@ namespace Cpu {
 				cpu_temp_only = true;
 				macM1 = true;
 			} else {
+#endif
 				// try SMC (intel)
 				Logger::debug("checking intel");
 				SMCConnection smcCon;
@@ -281,7 +287,9 @@ namespace Cpu {
 					// ignore, we don't have temp
 					got_sensors = false;
 				}
+#if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 			}
+#endif
 		}
 		return got_sensors;
 	}
@@ -290,11 +298,12 @@ namespace Cpu {
 		current_cpu.temp_max = 95;  // we have no idea how to get the critical temp
 		try {
 			if (macM1) {
+#if __MAC_OS_X_VERSION_MIN_REQUIRED > 101504
 				ThermalSensors sensors;
 				current_cpu.temp.at(0).push_back(sensors.getSensors());
 				if (current_cpu.temp.at(0).size() > 20)
 					current_cpu.temp.at(0).pop_front();
-
+#endif
 			} else {
 				SMCConnection smcCon;
 				int threadsPerCore = Shared::coreCount / Shared::physicalCoreCount;
@@ -329,8 +338,8 @@ namespace Cpu {
 		return std::to_string(freq / 1000.0 / 1000.0 / 1000.0).substr(0, 3);
 	}
 
-	auto get_core_mapping() -> unordered_flat_map<int, int> {
-		unordered_flat_map<int, int> core_map;
+	auto get_core_mapping() -> std::unordered_map<int, int> {
+		std::unordered_map<int, int> core_map;
 		if (cpu_temp_only) return core_map;
 
 		natural_t cpu_count;
@@ -398,8 +407,8 @@ namespace Cpu {
 		~IOPSList_Wrap() { CFRelease(data); }
 	};
 
-	auto get_battery() -> tuple<int, long, string> {
-		if (not has_battery) return {0, 0, ""};
+	auto get_battery() -> tuple<int, float, long, string> {
+		if (not has_battery) return {0, 0, 0, ""};
 
 		uint32_t percent = -1;
 		long seconds = -1;
@@ -438,7 +447,7 @@ namespace Cpu {
 				has_battery = false;
 			}
 		}
-		return {percent, seconds, status};
+		return {percent, -1, seconds, status};
 	}
 
 	auto collect(bool no_update) -> cpu_info & {
@@ -591,7 +600,7 @@ namespace Mem {
 			io_object_t &object;
 	};
 
-	void collect_disk(unordered_flat_map<string, disk_info> &disks, unordered_flat_map<string, string> &mapping) {
+	void collect_disk(std::unordered_map<string, disk_info> &disks, std::unordered_map<string, string> &mapping) {
 		io_registry_entry_t drive;
 		io_iterator_t drive_list;
 
@@ -677,7 +686,7 @@ namespace Mem {
 		if (host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&p, &info_size) == 0) {
 			mem.stats.at("free") = p.free_count * Shared::pageSize;
 			mem.stats.at("cached") = p.external_page_count * Shared::pageSize;
-			mem.stats.at("used") = (p.active_count + p.inactive_count + p.wire_count) * Shared::pageSize;
+			mem.stats.at("used") = (p.active_count + p.wire_count) * Shared::pageSize;
 			mem.stats.at("available") = Shared::totalMem - mem.stats.at("used");
 		}
 
@@ -708,7 +717,7 @@ namespace Mem {
 		}
 
 		if (show_disks) {
-			unordered_flat_map<string, string> mapping;  // keep mapping from device -> mountpoint, since IOKit doesn't give us the mountpoint
+			std::unordered_map<string, string> mapping;  // keep mapping from device -> mountpoint, since IOKit doesn't give us the mountpoint
 			double uptime = system_uptime();
 			auto &disks_filter = Config::getS("disks_filter");
 			bool filter_exclude = false;
@@ -786,8 +795,13 @@ namespace Mem {
 				disk.total = vfs.f_blocks * vfs.f_frsize;
 				disk.free = vfs.f_bfree * vfs.f_frsize;
 				disk.used = disk.total - disk.free;
-				disk.used_percent = round((double)disk.used * 100 / disk.total);
-				disk.free_percent = 100 - disk.used_percent;
+				if (disk.total != 0) {
+					disk.used_percent = round((double)disk.used * 100 / disk.total);
+					disk.free_percent = 100 - disk.used_percent;
+				} else {
+					disk.used_percent = 0;
+					disk.free_percent = 0;
+				}
 			}
 
 			//? Setup disks order in UI and add swap if enabled
@@ -821,13 +835,13 @@ namespace Mem {
 }  // namespace Mem
 
 namespace Net {
-	unordered_flat_map<string, net_info> current_net;
+	std::unordered_map<string, net_info> current_net;
 	net_info empty_net = {};
 	vector<string> interfaces;
 	string selected_iface;
 	int errors = 0;
-	unordered_flat_map<string, uint64_t> graph_max = {{"download", {}}, {"upload", {}}};
-	unordered_flat_map<string, array<int, 2>> max_count = {{"download", {}}, {"upload", {}}};
+	std::unordered_map<string, uint64_t> graph_max = {{"download", {}}, {"upload", {}}};
+	std::unordered_map<string, array<int, 2>> max_count = {{"download", {}}, {"upload", {}}};
 	bool rescale = true;
 	uint64_t timestamp = 0;
 
@@ -904,7 +918,7 @@ namespace Net {
 				} // else, ignoring family==AF_LINK (see man 3 getifaddrs)
 			}
 
-			unordered_flat_map<string, std::tuple<uint64_t, uint64_t>> ifstats;
+			std::unordered_map<string, std::tuple<uint64_t, uint64_t>> ifstats;
 			int mib[] = {CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0};
 			size_t len;
 			if (sysctl(mib, 6, nullptr, &len, nullptr, 0) < 0) {
@@ -931,7 +945,7 @@ namespace Net {
 				}
 			}
 
-			//? Get total recieved and transmitted bytes + device address if no ip was found
+			//? Get total received and transmitted bytes + device address if no ip was found
 			for (const auto &iface : interfaces) {
 				for (const string dir : {"download", "upload"}) {
 					auto &saved_stat = net.at(iface).stat.at(dir);
@@ -978,7 +992,6 @@ namespace Net {
 					else
 						it++;
 				}
-				net.compact();
 			}
 
 			timestamp = new_timestamp;
@@ -1049,7 +1062,7 @@ namespace Net {
 namespace Proc {
 
 	vector<proc_info> current_procs;
-	unordered_flat_map<string, string> uid_user;
+	std::unordered_map<string, string> uid_user;
 	string current_sort;
 	string current_filter;
 	bool current_rev = false;
@@ -1204,10 +1217,14 @@ namespace Proc {
 					//? Get program name, command, username, parent pid, nice and status
 					if (no_cache) {
 						char fullname[PROC_PIDPATHINFO_MAXSIZE];
-						proc_pidpath(pid, fullname, sizeof(fullname));
-						const string f_name = std::string(fullname);
-						size_t lastSlash = f_name.find_last_of('/');
-						new_proc.name = f_name.substr(lastSlash + 1);
+						int rc = proc_pidpath(pid, fullname, sizeof(fullname));
+						string f_name = "<defunct>";
+						if (rc != 0) {
+							f_name = std::string(fullname);
+							size_t lastSlash = f_name.find_last_of('/');
+							f_name = f_name.substr(lastSlash + 1);
+						}
+						new_proc.name = f_name;
 						//? Get process arguments if possible, fallback to process path in case of failure
 						if (Shared::arg_max > 0) {
 							std::unique_ptr<char[]> proc_chars(new char[Shared::arg_max]);
@@ -1237,7 +1254,11 @@ namespace Proc {
 						new_proc.ppid = kproc.kp_eproc.e_ppid;
 						new_proc.cpu_s = kproc.kp_proc.p_starttime.tv_sec * 1'000'000 + kproc.kp_proc.p_starttime.tv_usec;
 						struct passwd *pwd = getpwuid(kproc.kp_eproc.e_ucred.cr_uid);
-						new_proc.user = pwd->pw_name;
+                        if (pwd != nullptr) {
+                            new_proc.user = pwd->pw_name;
+                        } else {
+                            new_proc.user = std::to_string(kproc.kp_eproc.e_ucred.cr_uid);
+                        }
 					}
 					new_proc.p_nice = kproc.kp_proc.p_nice;
 					new_proc.state = kproc.kp_proc.p_stat;
@@ -1289,7 +1310,7 @@ namespace Proc {
 			filter_found = 0;
 			for (auto &p : current_procs) {
 				if (not tree and not filter.empty()) {
-					if (not s_contains_ic(to_string(p.pid), filter) and not s_contains_ic(p.name, filter) and not s_contains_ic(p.cmd, filter) and not s_contains_ic(p.user, filter)) {
+					if (!matches_filter(p, filter)) {
 						p.filtered = true;
 						filter_found++;
 					} else {
