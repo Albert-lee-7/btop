@@ -203,10 +203,8 @@ override LDFLAGS	+= $(LDCXXFLAGS) $(OPTFLAGS) $(WARNFLAGS)
 INC					:= $(foreach incdir,$(INCDIRS),-isystem $(incdir)) -I$(SRCDIR) -I$(BUILDDIR)
 SU_USER				:= root
 
-DEBUG = true
 ifdef DEBUG
 	override OPTFLAGS := -O0 -g
-$(info $(OPTFLAGS))
 endif
 
 SOURCES	:= $(sort $(shell find $(SRCDIR) -maxdepth 1 -type f -name *.$(SRCEXT)))
